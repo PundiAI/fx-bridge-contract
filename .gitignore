@@ -1,0 +1,10 @@
+/cache/
+/coverage/
+/keystore/
+/node_modules/
+/typechain/
+/artifacts/
+modules.xml
+.idea/
+/publish/
+/package-lock.json

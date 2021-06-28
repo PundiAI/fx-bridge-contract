@@ -1,0 +1,19 @@
+image: node:14.17.1
+cache:
+    paths:
+        - node_module/
+stages:
+    - test
+test:
+    stage: test
+    only: 
+        - master
+    before_script:
+        - npm install --verbose
+        - node-gyp rebuild
+        - npm run typechain
+        # - npm install coveralls --save-dev
+        # - npm install codecov --save-dev
+    script:
+        - npm run test
+        - npm run coverage
