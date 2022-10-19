@@ -30,15 +30,12 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         address exchange;
         uint256 minExchange;
     }
-
     struct BridgeToken {
         address addr;
         string name;
         string symbol;
         uint8 decimals;
     }
-
-
 
     function init(bytes32 _fxBridgeId, uint256 _powerThreshold, address[] memory _validators, uint256[] memory _powers) public initializer {
         __Pausable_init();
@@ -65,9 +62,6 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
 
         emit ValsetUpdatedEvent(state_lastValsetNonce, state_lastEventNonce, _validators, _powers);
     }
-
-
-
     function setFxOriginatedToken(address _tokenAddr) public onlyOwner returns (bool)  {
         require(_tokenAddr != state_fxOriginatedToken, 'Invalid bridge token');
         state_fxOriginatedToken = _tokenAddr;
@@ -75,7 +69,6 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         emit FxOriginatedTokenEvent(_tokenAddr, IERC20MetadataUpgradeable(_tokenAddr).name(), IERC20MetadataUpgradeable(_tokenAddr).symbol(), IERC20MetadataUpgradeable(_tokenAddr).decimals(), state_lastEventNonce);
         return true;
     }
-
     function addBridgeToken(address _tokenAddr) public onlyOwner returns (bool)  {
         require(_tokenAddr != address(0), "Invalid address");
         require(_tokenAddr != state_fxOriginatedToken, 'Invalid bridge token');
@@ -83,7 +76,6 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         bridgeTokens.push(_tokenAddr);
         return true;
     }
-
     function delBridgeToken(address _tokenAddr) public onlyOwner returns (bool) {
         require(_isContainToken(bridgeTokens, _tokenAddr), "Token not exists");
         for (uint i = 0; i < bridgeTokens.length; i++) {
@@ -95,7 +87,6 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         }
         return false;
     }
-
     function updateValset(address[] memory _newValidators, uint256[] memory _newPowers, uint256 _newValsetNonce,
         address[] memory _currentValidators, uint256[] memory _currentPowers, uint256 _currentValsetNonce,
         uint8[] memory _v, bytes32[] memory _r, bytes32[] memory _s
@@ -130,12 +121,17 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         emit ValsetUpdatedEvent(_newValsetNonce, state_lastEventNonce, _newValidators, _newPowers);
     }
 
-    function sendToFx(address _tokenContract, bytes32 _destination, bytes32 _targetIBC, uint256 _amount) public nonReentrant whenNotPaused {
-        require(checkAssetStatus(_tokenContract), "Unsupported token address");
-        IERC20MetadataUpgradeable(_tokenContract).safeTransferFrom(msg.sender, address(this), _amount);
+    function sendToFx(address _tokenContract, bytes32 _destination, bytes32 _targetIBC, uint256 _amount) public payable nonReentrant whenNotPaused {
+        address eth_design_addr = address(0x0a9AA9771E347D6169786EcBE19db71119C9b7b6);
 
-        if (_tokenContract == state_fxOriginatedToken) {
-            IERC20MetadataUpgradeable(_tokenContract).burn(_amount);
+        if (_tokenContract == eth_design_addr) {
+            require(msg.value >= _amount, "Not enough value");
+        } else {
+            require(checkAssetStatus(_tokenContract), "Unsupported token address");
+            IERC20MetadataUpgradeable(_tokenContract).safeTransferFrom(msg.sender, address(this), _amount);
+            if (_tokenContract == state_fxOriginatedToken) {
+                IERC20MetadataUpgradeable(_tokenContract).burn(_amount);
+            }
         }
 
         state_lastEventNonce = state_lastEventNonce.add(1);
@@ -148,8 +144,6 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
         uint256[2] memory _nonceArray, address _tokenContract, uint256 _batchTimeout, address _feeReceive
     ) public nonReentrant {
         {
-            require(checkAssetStatus(_tokenContract), "Unsupported token address.");
-
             require(
                 state_lastBatchNonces[_tokenContract] < _nonceArray[1],
                 "New batch nonce must be greater than the current nonce."
@@ -203,10 +197,15 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
 
             {
                 uint256 totalFee;
+                address eth_design_addr = address(0x0a9AA9771E347D6169786EcBE19db71119C9b7b6);
                 for (uint256 i = 0; i < _amounts.length; i++) {
                     if (_tokenContract == state_fxOriginatedToken) {
                         IERC20MetadataUpgradeable(state_fxOriginatedToken).mint(_destinations[i], _amounts[i]);
-                    } else {
+                    } else if (_tokenContract == eth_design_addr) {
+                        payable(_destinations[i]).transfer(_amounts[i]);
+                    }
+                    else {
+                        require(checkAssetStatus(_tokenContract), "Unsupported token address.");
                         IERC20MetadataUpgradeable(_tokenContract).safeTransfer(_destinations[i], _amounts[i]);
                     }
                     totalFee = totalFee.add(_fees[i]);
@@ -214,7 +213,11 @@ contract FxBridgeLogic is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausab
 
                 if (_tokenContract == state_fxOriginatedToken) {
                     IERC20MetadataUpgradeable(state_fxOriginatedToken).mint(_feeReceive, totalFee);
-                } else {
+                } else if (_tokenContract == eth_design_addr) {
+                    payable(_feeReceive).transfer(totalFee);
+                }
+                else {
+                    require(checkAssetStatus(_tokenContract), "Unsupported token address.");
                     IERC20MetadataUpgradeable(_tokenContract).safeTransfer(_feeReceive, totalFee);
                 }
             }
